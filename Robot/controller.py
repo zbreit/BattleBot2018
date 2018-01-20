@@ -3,10 +3,10 @@ import radio
 
 radio.on()
 
-def assembleMessage(dir, r_speed, l_speed):
+def assembleMessage(speed, left_is_moving, right_is_moving, should_flip):
     """Create the message to be received by the robot"""
-    unique_signature = "DLZ"
-    return unique_signature + "/" + dir + "/" + r_speed + "/" + l_speed
+    UNIQUE_SIGNATURE = "DLZ"
+    return UNIQUE_SIGNATURE + "/" + speed + "/" + left_is_moving + "/" + right_is_moving + "/" + should_flip
 
 
 # Event Loop
@@ -16,23 +16,30 @@ while True:
     # Determine direction (either forwards or backwards)
     if y_orientation < 300:
         display.show(Image.ARROW_N)
-        direction = "forward"
+        speed = "100"
     else:
         display.show(Image.ARROW_S)
-        direction = "backward"
+        speed = "-100"
     
     # Determine which wheels should turn
     if button_a.is_pressed():
-        leftSpeed = "moving"
+        left_is_moving = "1"
     else:
-        leftSpeed = "still"
+        left_is_moving = "0"
 
     if button_b.is_pressed():
-        rightSpeed = "moving"
+        right_is_moving = "1"
     else:
-        rightSpeed = "still"
+        right_is_moving = "0"
 
-    radioMessage = assembleMessage(direction, rightSpeed, leftSpeed)
+    # Determine if the flipper should be activated
+    if accelerometer.was_gesture("face down"):
+        display.show(Image.SKULL)
+        should_flip = "1"
+    else:
+        should_flip = "0"
+
+    radioMessage = assembleMessage(speed, left_is_moving, right_is_moving, should_flip)
     radio.send(radioMessage)
 
-    sleep(50)
+    sleep(25)

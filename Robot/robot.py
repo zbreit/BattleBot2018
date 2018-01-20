@@ -1,103 +1,139 @@
 from microbit import *
 import radio
 
-# Servo class sourced from Github
-# TODO: Find actual link
-class Servo:
-
-    """
-    A simple class for controlling hobby servos.
-    Args:
-        pin (pin0 .. pin3): The pin where servo is connected.
-        freq (int): The frequency of the signal, in hertz.
-        min_us (int): The minimum signal length supported by the servo.
-        max_us (int): The maximum signal length supported by the servo.
-        angle (int): The angle between minimum and maximum positions.
-    Usage:
-        SG90 @ 3.3v servo connected to pin0
-        = Servo(pin0).write_angle(90)
-    """
-
-    def __init__(self, pin, freq=50, min_us=600, max_us=2400, angle=180):
-        self.min_us = min_us
-        self.max_us = max_us
-        self.us = 0
-        self.freq = freq
-        self.angle = angle
-        self.analog_period = 0
-        self.pin = pin
-        analog_period = round((1/self.freq) * 1000)  # hertz to miliseconds
-        self.pin.set_analog_period(analog_period)
-
-    def write_us(self, us):
-        us = min(self.max_us, max(self.min_us, us))
-        duty = round(us * 1024 * self.freq // 1000000)
-        self.pin.write_analog(duty)
-        self.pin.write_digital(0)  # turn the pin off
-
-    def write_angle(self, degrees=None):
-        degrees = degrees % 360
-        total_range = self.max_us - self.min_us
-        us = self.min_us + total_range * degrees // self.angle
-        self.write_us(us)
-
 radio.on()
 
-# Global Constants
-leftMotor = Servo(pin15)
-rightMotor = Servo(pin16)
+# Motobit classes sourced from Github: https://github.com/hsshss/motobit-micropython
+class MotoBitMotor:
+    FORWARD_FLAG = 0x80
+
+    def __init__(self, i2c_addr, cmd_speed, invert):
+        self.i2c_addr = i2c_addr
+        self.cmd_speed = cmd_speed
+        self.invert = invert
+
+    def __drive(self, speed):
+        flags = 0
+        if self.invert:
+            speed = -speed
+        if speed >= 0:
+            flags |= MotoBitMotor.FORWARD_FLAG
+        speed = int(speed / 100 * 127)
+        if speed < -127:
+            speed = -127
+        if speed > 127:
+            speed = 127
+        speed = (speed & 0x7f) | flags
+        i2c.write(self.i2c_addr, bytes([self.cmd_speed, speed]))
+
+    def forward(self, speed):
+        '''Forward motor control.
+        Args:
+            speed (int|float): -100 ~ +100
+        '''
+        self.__drive(speed)
+
+    def reverse(self, speed):
+        '''Reverse motor control.
+        Args:
+            speed (int|float): -100 ~ +100
+        '''
+        self.__drive(-speed)
+class MotoBit:
+    I2C_ADDR = 0x59
+    CMD_ENABLE = 0x70
+    CMD_SPEED_LEFT = 0x21
+    CMD_SPEED_RIGHT = 0x20
+
+    def enable(self):
+        '''Enable motor driver.
+        '''
+        i2c.write(MotoBit.I2C_ADDR, bytes([MotoBit.CMD_ENABLE, 0x01]))
+
+    def disable(self):
+        '''Disable motor driver.
+        '''
+        i2c.write(MotoBit.I2C_ADDR, bytes([MotoBit.CMD_ENABLE, 0x00]))
+
+    def left_motor(self, invert = False):
+        '''Acquire left motor object.
+        Args:
+            invert (bool): Invert polarity. (default: False)
+        '''
+        return MotoBitMotor(MotoBit.I2C_ADDR, MotoBit.CMD_SPEED_LEFT, invert)
+
+    def right_motor(self, invert = False):
+        '''Acquire right motor object.
+        Args:
+            invert (bool): Invert polarity. (default: False)
+        '''
+        return MotoBitMotor(MotoBit.I2C_ADDR, MotoBit.CMD_SPEED_RIGHT, invert)
+
+motobit = MotoBit()
+
+motobit.enable() # Enable motor driver
+
+leftMotor = motobit.left_motor()
+rightMotor = motobit.right_motor(invert = True)
 
 def parse(message):
-    """Returns a 3 element list that contains info from the controller"""
-    return remove_signature(message).split('/')
+    """Returns a 4 element list that contains info from the controller"""
+    return list(map(int, remove_signature(message)))
 
 def is_signed_message(message):
     """Returns true if the message contains our unique signature"""
     UNIQUE_SIGNATURE = "DLZ"
-    # Assert that the message is not 'NoneType'
-    if not message:
-        return False
     
-    if message[0:3] == UNIQUE_SIGNATURE:
+    if message[0] == UNIQUE_SIGNATURE:
         return True
     else:
         return False
 
 def remove_signature(message):
     """Remove the 3 Letter signature and the '/' found at the beginning of a valid message"""
-    return message[4:]
+    return message[1:]
 
-def tank_drive(direction, lSpeed, rSpeed):
+def tank_drive(speed, left_is_moving, right_is_moving):
     """ Drives the robot in tank drive. Direction indicates whether the robot will drive forwards or backwards"""
-    angles = {
-        "forward": 0,
-        "backward": 180
-    }
 
-    speed = angles[direction]
+    if right_is_moving:
+        rightMotor.forward(speed)
+    else:
+        rightMotor.forward(0)
 
-    if rSpeed == "moving":
-        rightMotor.write_angle(speed)
-    elif rSpeed == "still":
-        rightMotor.write_angle(90)
+    if left_is_moving:
+        leftMotor.forward(speed)
+    else:
+        leftMotor.forward(0)
 
-    if lSpeed == "moving":
-        leftMotor.write_angle(180 - speed)
-    elif lSpeed == "still":
-        leftMotor.write_angle(90)
+    display_direction(left_is_moving, right_is_moving)
+
+def display_direction(left, right):
+    if left or right:
+        display.show(Image.HAPPY)
+    else:
+        display.show(Image.SAD)
 
 # Event Loop
 while True:
     incoming = radio.receive()
-    if is_signed_message(incoming):
-        directionList = parse(incoming)
+
+    # Assert that the message is not 'NoneType'
+    if not incoming:
+        display.show(Image.SKULL)
+        sleep(50)
+        continue
     else:
-        directionList = []
-    # This is totally secure
-    if len(directionList) == 3:
-        direction = directionList[0]
-        rSpeed    = directionList[1]
-        lSpeed    = directionList[2]
-        tank_drive(direction, lSpeed, rSpeed)
+        incoming = incoming.split("/")
+
+    if is_signed_message(incoming):
+        direction_list   = parse(incoming)
+        speed           = direction_list[0]
+        left_is_moving  = direction_list[1]
+        right_is_moving = direction_list[2]
+        should_flip     = direction_list[3]
+        tank_drive(speed, left_is_moving, right_is_moving)
+        if should_flip:
+            display.show(Image.SKULL)
 
     sleep(50)
