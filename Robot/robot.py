@@ -69,12 +69,18 @@ class MotoBit:
         '''
         return MotoBitMotor(MotoBit.I2C_ADDR, MotoBit.CMD_SPEED_RIGHT, invert)
 
+# Enable motor driver
 motobit = MotoBit()
+motobit.enable() 
 
-motobit.enable() # Enable motor driver
-
-leftMotor = motobit.left_motor()
+# Declare motors
+leftMotor = motobit.left_motor(invert = True)
 rightMotor = motobit.right_motor(invert = True)
+
+# Couldn't get the servo library to work properly, 
+# so we were unable to test the flipper's functionality
+# flipperMotor = Servo(pin15)
+
 
 def parse(message):
     """Returns a 4 element list that contains info from the controller"""
@@ -106,9 +112,10 @@ def tank_drive(speed, left_is_moving, right_is_moving):
     else:
         leftMotor.forward(0)
 
-    display_direction(left_is_moving, right_is_moving)
+    display_if_moving(left_is_moving, right_is_moving)
 
-def display_direction(left, right):
+def display_if_moving(left, right):
+    """Uses the micro:bit's display to show whether the robot is moving or not"""
     if left or right:
         display.show(Image.HAPPY)
     else:
@@ -136,4 +143,4 @@ while True:
         if should_flip:
             display.show(Image.SKULL)
 
-    sleep(50)
+    sleep(40)

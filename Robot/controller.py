@@ -11,10 +11,8 @@ def assembleMessage(speed, left_is_moving, right_is_moving, should_flip):
 
 # Event Loop
 while True:
-    y_orientation = accelerometer.get_y()
-
     # Determine direction (either forwards or backwards)
-    if y_orientation < 300:
+    if accelerometer.get_y() < 300:
         display.show(Image.ARROW_N)
         speed = "100"
     else:
@@ -33,7 +31,8 @@ while True:
         right_is_moving = "0"
 
     # Determine if the flipper should be activated
-    if accelerometer.was_gesture("face down"):
+    x_orientation = accelerometer.get_x()
+    if x_orientation > 700 or x_orientation < -700:
         display.show(Image.SKULL)
         should_flip = "1"
     else:
@@ -42,4 +41,4 @@ while True:
     radioMessage = assembleMessage(speed, left_is_moving, right_is_moving, should_flip)
     radio.send(radioMessage)
 
-    sleep(25)
+    sleep(40)
